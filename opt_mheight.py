@@ -88,14 +88,15 @@ def solve_m_height(G, m):
     
     return best_height, best_u, best_params
 
-# Example usage:
-G = np.array([[0.911, 0.03, 1.481, -0.756, 1.249],
-              [-0.049, 0.975, 1.511, -1.303, 0.74]])  # Generator matrix
-m = 2  # Index for m-height calculation
+if __name__ == "__main__":
+    # Example usage:
+    G = np.array([[0.911, 0.03, 1.481, -0.756, 1.249],
+                [-0.049, 0.975, 1.511, -1.303, 0.74]])  # Generator matrix
+    m = 2  # Index for m-height calculation
 
-optimal_height, optimal_u, optimal_params = solve_m_height(G, m)
-print(f"Optimal m-height: {optimal_height}")
-print(f"Optimal vector u: {optimal_u}")
-print(f"Optimal (a, b, X, psi): {optimal_params}")
+    optimal_height, optimal_u, optimal_params = solve_m_height(G, m)
+    print(f"Optimal m-height: {optimal_height}")
+    print(f"Optimal vector u: {optimal_u}")
+    print(f"Optimal (a, b, X, psi): {optimal_params}")
 
-print(f"Verify m-height calculation: {calculate_m_height(G, optimal_u, m)}")
+    print(f"Verify m-height calculation: {calculate_m_height(G, optimal_u, m)}")
