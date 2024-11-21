@@ -21,9 +21,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(eigen)
 
 # Add the executables and their source files
-add_executable(main_exec main.cc calc_mheight.cc)
-add_executable(test_eigen_exec test_eigen.cc calc_mheight.cc)
-add_executable(test_exec test.cc calc_mheight.cc)
+add_executable(main_exec main.cc calc_mheight.cc opt_mheight.cc)
+add_executable(test_eigen_exec test_eigen.cc calc_mheight.cc opt_mheight.cc)
+add_executable(test_exec test.cc calc_mheight.cc opt_mheight.cc)
 
 # Link Eigen include directory for each executable
 target_include_directories(main_exec PRIVATE ${eigen_SOURCE_DIR})

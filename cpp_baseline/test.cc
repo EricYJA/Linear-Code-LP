@@ -66,7 +66,7 @@ int main() {
 
     // Test inversePermutation
     try {
-        std::vector<int> tau = {3, 1, 4, 0, 2};
+        std::vector<int> tau = {3, 4, 1, 0, 2};
         std::vector<int> tauInv = inversePermutation(tau);
 
         std::cout << "tau: ";
