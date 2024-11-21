@@ -1,5 +1,7 @@
 import numpy as np
 from itertools import combinations
+from itertools import permutations
+from itertools import product
 from scipy.optimize import linprog
 from calc_mheight_params import inverse_permutation
 from calc_mheight import calculate_m_height
@@ -28,11 +30,15 @@ def solve_m_height(G, m):
             for X in combinations([j for j in range(n) if j not in {a, b}], m-1):
                 X = sorted(X)
                 Y = sorted([j for j in range(n) if j not in {a, b} and j not in X])
+
+                # print(f"Checking (a, b, X, Y): ({a}, {b}, {X}, {Y})")
                 
                 # Generate all possible sign combinations for psi
-                for psi in combinations([-1, 1], m):
+                for psi in list(product([1, -1], repeat=m)):
                     psi = list(psi)
                     
+                    print(f"Checking (a, b, X, Y, psi): ({a}, {b}, {X}, {Y}, {psi})")
+
                     # Define the quasi-sorted permutation tau
                     tau = [a] + X + [b] + Y
                     tau_inv = inverse_permutation(tau)
@@ -91,7 +97,7 @@ def solve_m_height(G, m):
 if __name__ == "__main__":
     # Example usage:
     G = np.array([[0.911, 0.03, 1.481, -0.756, 1.249],
-                [-0.049, 0.975, 1.511, -1.303, 0.74]])  # Generator matrix
+                    [-0.049, 0.975, 1.511, -1.303, 0.74]]) 
     m = 2  # Index for m-height calculation
 
     optimal_height, optimal_u, optimal_params = solve_m_height(G, m)
