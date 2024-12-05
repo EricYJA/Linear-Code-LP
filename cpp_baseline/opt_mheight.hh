@@ -6,6 +6,7 @@
 #include <limits>
 #include <iostream>
 #include <numeric>
+#include <glpk.h>
 
 #include "calc_mheight.hh"
 

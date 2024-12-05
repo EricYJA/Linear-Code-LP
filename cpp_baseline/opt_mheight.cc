@@ -15,130 +15,179 @@ solveMHeight(const Eigen::MatrixXd& G, int m) {
     int k = G.rows();
     int n = G.cols();
 
-    printf("k: %d, n: %d, m: %d\n", k, n, m);
+    std::cout << "k: " << k << ", n: " << n << ", m: " << m << std::endl;
 
     double bestHeight = -std::numeric_limits<double>::infinity();
-    Eigen::VectorXd bestU;
+    Eigen::VectorXd bestU(k);
     std::tuple<int, int, std::vector<int>, std::vector<int>> bestParams;
 
-    // Iterate over all configurations of (a, b, X, psi)
+    std::vector<int> allIndices(n);
+    std::iota(allIndices.begin(), allIndices.end(), 0);
+
+    // Generate combinations for (a, b)
     for (int a = 0; a < n; ++a) {
         for (int b = 0; b < n; ++b) {
             if (b == a) continue;
 
-            std::vector<int> allIndices(n);
-            std::iota(allIndices.begin(), allIndices.end(), 0);
-
-            // Generate all combinations of X
+            // Prepare remaining indices (excluding a, b)
             std::vector<int> remainingIndices = allIndices;
             remainingIndices.erase(std::remove(remainingIndices.begin(), remainingIndices.end(), a), remainingIndices.end());
             remainingIndices.erase(std::remove(remainingIndices.begin(), remainingIndices.end(), b), remainingIndices.end());
 
-            do {
-                std::vector<int> X(remainingIndices.begin(), remainingIndices.begin() + m - 1);
-                std::sort(X.begin(), X.end());
+            // Generate all combinations of size m-1 from remainingIndices for X
+            std::vector<std::vector<int>> combinations;
+            {
+                std::function<void(int,int,std::vector<int>&)> combGen = [&](int offset, int r, std::vector<int>& temp) {
+                    if (r == 0) {
+                        combinations.push_back(temp);
+                        return;
+                    }
+                    for (int i = offset; i <= (int)remainingIndices.size()-r; ++i) {
+                        temp.push_back(remainingIndices[i]);
+                        combGen(i+1, r-1, temp);
+                        temp.pop_back();
+                    }
+                };
+                std::vector<int> temp;
+                combGen(0, m - 1, temp);
+            }
 
+            // Iterate over each combination for X
+            for (const auto& X : combinations) {
+                // Y are those in remainingIndices not in X
                 std::vector<int> Y;
-                for (int j : remainingIndices) {
-                    if (std::find(X.begin(), X.end(), j) == X.end()) {
-                        Y.push_back(j);
+                for (int idx : remainingIndices) {
+                    if (std::find(X.begin(), X.end(), idx) == X.end()) {
+                        Y.push_back(idx);
                     }
                 }
-                std::sort(Y.begin(), Y.end());
 
-                // Generate all sign combinations for psi
+                // Iterate over psi configurations
                 for (int psiConfig = 0; psiConfig < (1 << m); ++psiConfig) {
                     std::vector<int> psi(m);
                     for (int i = 0; i < m; ++i) {
                         psi[i] = (psiConfig & (1 << i)) ? 1 : -1;
                     }
 
-                    printf("a: %d, b: %d, X: ", a, b);
-                    for (int x : X) printf("%d ", x);
-                    printf(", Y: ");
-                    for (int y : Y) printf("%d ", y);
-                    printf(", psi: ");
-                    for (int p : psi) printf("%d ", p);
-                    printf("\n");
-
-                    // Quasi-sorted permutation tau
-                    std::vector<int> tau = {a};
+                    // Construct tau = [a, X..., b, Y...]
+                    std::vector<int> tau;
+                    tau.push_back(a);
                     tau.insert(tau.end(), X.begin(), X.end());
                     tau.push_back(b);
                     tau.insert(tau.end(), Y.begin(), Y.end());
 
                     std::vector<int> tauInv = inversePermutation(tau);
 
-                    // Linear program setup
-                    Eigen::VectorXd c(k);
+                    // Count rows:
+                    // For each j in X: 2 rows
+                    // For each j in Y: 2 rows
+                    // For b: 1 row
+                    int totalRows = 2 * (int)X.size() + 2 * (int)Y.size() + 1;
+
+                    // Create and set up LP
+                    glp_prob* lp = glp_create_prob();
+                    glp_set_obj_dir(lp, GLP_MAX);
+                    glp_add_rows(lp, totalRows);
+                    glp_add_cols(lp, k);
+
+                    // Set objective coefficients: maximize sum(psi[0] * G(i,a) * u_i)
                     for (int i = 0; i < k; ++i) {
-                        c[i] = psi[0] * G(i, a);
+                        glp_set_obj_coef(lp, i + 1, psi[0] * G(i, a));
                     }
 
-                    Eigen::MatrixXd A;
-                    Eigen::VectorXd bIneq;
-                    Eigen::MatrixXd AEq;
-                    Eigen::VectorXd bEq;
+                    int rowIndex = 1;
 
-                    // Add constraints for X
-                    for (int j : X) {
-                        Eigen::RowVectorXd rowPos(k);
-                        Eigen::RowVectorXd rowNeg(k);
-                        for (int i = 0; i < k; ++i) {
-                            rowPos[i] = psi[tauInv[j]] * G(i, j) - psi[0] * G(i, a);
-                            rowNeg[i] = -psi[tauInv[j]] * G(i, j);
+                    // Add constraints for X:
+                    // 1) psi[tauInv[j]]*G(:,j) - psi[0]*G(:,a) ≤ 0
+                    // 2) -psi[tauInv[j]]*G(:,j) ≤ -1
+                    for (int jx : X) {
+                        // Row for "rowPos"
+                        {
+                            std::vector<int> indices(k+1);
+                            std::vector<double> values(k+1);
+                            for (int col = 0; col < k; ++col) {
+                                indices[col+1] = col+1;
+                                values[col+1] = psi[tauInv[jx]] * G(col, jx) - psi[0] * G(col, a);
+                            }
+                            glp_set_row_bnds(lp, rowIndex, GLP_UP, 0.0, 0.0);
+                            glp_set_mat_row(lp, rowIndex, k, indices.data(), values.data());
+                            rowIndex++;
                         }
-                        A.conservativeResize(A.rows() + 1, k);
-                        A.row(A.rows() - 1) = rowPos;
-                        bIneq.conservativeResize(bIneq.size() + 1);
-                        bIneq[bIneq.size() - 1] = 0;
 
-                        A.conservativeResize(A.rows() + 1, k);
-                        A.row(A.rows() - 1) = rowNeg;
-                        bIneq.conservativeResize(bIneq.size() + 1);
-                        bIneq[bIneq.size() - 1] = -1;
-                    }
-
-                    // Add constraints for Y
-                    for (int j : Y) {
-                        Eigen::RowVectorXd row(k);
-                        for (int i = 0; i < k; ++i) {
-                            row[i] = G(i, j);
+                        // Row for "rowNeg"
+                        {
+                            std::vector<int> indices(k+1);
+                            std::vector<double> values(k+1);
+                            for (int col = 0; col < k; ++col) {
+                                indices[col+1] = col+1;
+                                values[col+1] = -psi[tauInv[jx]] * G(col, jx);
+                            }
+                            glp_set_row_bnds(lp, rowIndex, GLP_UP, -1.0, -1.0);
+                            glp_set_mat_row(lp, rowIndex, k, indices.data(), values.data());
+                            rowIndex++;
                         }
-                        A.conservativeResize(A.rows() + 1, k);
-                        A.row(A.rows() - 1) = row;
-                        bIneq.conservativeResize(bIneq.size() + 1);
-                        bIneq[bIneq.size() - 1] = 1;
-
-                        A.conservativeResize(A.rows() + 1, k);
-                        A.row(A.rows() - 1) = -row;
-                        bIneq.conservativeResize(bIneq.size() + 1);
-                        bIneq[bIneq.size() - 1] = 1;
                     }
 
-                    // Add equality constraint for b
-                    Eigen::RowVectorXd rowEq(k);
-                    for (int i = 0; i < k; ++i) {
-                        rowEq[i] = G(i, b);
+                    // Add constraints for Y:
+                    // G(:,j) ≤ 1  and  -G(:,j) ≤ 1
+                    for (int jy : Y) {
+                        // G(:,jy) ≤ 1
+                        {
+                            std::vector<int> indices(k+1);
+                            std::vector<double> values(k+1);
+                            for (int col = 0; col < k; ++col) {
+                                indices[col+1] = col+1;
+                                values[col+1] = G(col, jy);
+                            }
+                            glp_set_row_bnds(lp, rowIndex, GLP_UP, 0.0, 1.0);
+                            glp_set_mat_row(lp, rowIndex, k, indices.data(), values.data());
+                            rowIndex++;
+                        }
+
+                        // -G(:,jy) ≤ 1
+                        {
+                            std::vector<int> indices(k+1);
+                            std::vector<double> values(k+1);
+                            for (int col = 0; col < k; ++col) {
+                                indices[col+1] = col+1;
+                                values[col+1] = -G(col, jy);
+                            }
+                            glp_set_row_bnds(lp, rowIndex, GLP_UP, 0.0, 1.0);
+                            glp_set_mat_row(lp, rowIndex, k, indices.data(), values.data());
+                            rowIndex++;
+                        }
                     }
-                    AEq.conservativeResize(AEq.rows() + 1, k);
-                    AEq.row(AEq.rows() - 1) = rowEq;
-                    bEq.conservativeResize(bEq.size() + 1);
-                    bEq[bEq.size() - 1] = 1;
+
+                    // Add equality constraint for b:
+                    // G(:,b) = 1
+                    {
+                        std::vector<int> indices(k+1);
+                        std::vector<double> values(k+1);
+                        for (int col = 0; col < k; ++col) {
+                            indices[col+1] = col+1;
+                            values[col+1] = G(col, b);
+                        }
+                        glp_set_row_bnds(lp, rowIndex, GLP_FX, 1.0, 1.0);
+                        glp_set_mat_row(lp, rowIndex, k, indices.data(), values.data());
+                        rowIndex++;
+                    }
 
                     // Solve the LP
-                    // (Replace this with a suitable LP solver, e.g., CPLEX, Gurobi, or OSQP)
-                    Eigen::VectorXd u;  // Solution vector
-                    double objectiveValue = -1; // Placeholder for the objective value
+                    glp_simplex(lp, NULL);
+                    double objectiveValue = glp_get_obj_val(lp);
 
-                    // Check if the solution improves the best height
+                    // Check if the solution improved
                     if (objectiveValue > bestHeight) {
                         bestHeight = objectiveValue;
-                        bestU = u;
+                        for (int i = 0; i < k; ++i) {
+                            bestU[i] = glp_get_col_prim(lp, i + 1);
+                        }
                         bestParams = {a, b, X, psi};
                     }
+
+                    glp_delete_prob(lp);
                 }
-            } while (std::next_permutation(remainingIndices.begin(), remainingIndices.end()));
+            }
         }
     }
 
