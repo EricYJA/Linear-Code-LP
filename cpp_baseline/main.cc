@@ -3,6 +3,8 @@
 #include <vector>
 #include <tuple>
 #include <chrono>
+#include <omp.h>
+#include <random>
 
 #include "opt_mheight.hh"
 
@@ -23,7 +25,7 @@ int main()
     {
         auto start = std::chrono::high_resolution_clock::now();
 
-        auto [bestHeight, bestU, bestParams] = solveMHeight(G1, m);
+        auto [bestHeight, bestU, bestParams] = solveMHeight_openmp_flat(G1, m);
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
@@ -130,7 +132,70 @@ int main()
     {
         auto start = std::chrono::high_resolution_clock::now();
 
-        auto [bestHeight, bestU, bestParams] = solveMHeight_openmp(G3, m);
+        auto [bestHeight, bestU, bestParams] = solveMHeight_openmp_flat(G3, m);
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << "Elapsed time: " << elapsed.count() << " s" << std::endl;
+
+        auto [a, b, X, psi] = bestParams;
+
+        std::cout << "Optimal m-height: " << bestHeight << std::endl;
+
+        std::cout << "Optimal vector u: [";
+        for (int i = 0; i < bestU.size(); ++i)
+        {
+            std::cout << bestU[i] << (i == bestU.size() - 1 ? "" : ", ");
+        }
+        std::cout << "]" << std::endl;
+
+        std::cout << "Optimal parameters:" << std::endl;
+        std::cout << "a: " << a << std::endl;
+        std::cout << "b: " << b << std::endl;
+        std::cout << "X: ";
+        for (int x : X)
+            std::cout << x << " ";
+        std::cout << std::endl;
+
+        std::cout << "psi: ";
+        for (int p : psi)
+            std::cout << p << " ";
+        std::cout << std::endl;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+
+
+    std::cout << "Fourth example: G(14, 20)" << "m = 3" << " Random G" << std::endl;
+
+    // Dimensions of the matrix
+    const int rows = 14;
+    const int cols = 20;
+
+    // Create an Eigen matrix
+    Eigen::MatrixXd G4(rows, cols);
+
+    // Random number generator
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(-3.0, 3.0);
+
+    // Fill the matrix with random values
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            G4(i, j) = dis(gen);
+        }
+    }
+
+    m = 3;
+
+    try
+    {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        auto [bestHeight, bestU, bestParams] = solveMHeight_openmp_flat(G4, m);
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;

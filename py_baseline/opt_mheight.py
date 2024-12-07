@@ -169,3 +169,24 @@ if __name__ == "__main__":
     print(f"Optimal (a, b, X, psi): {optimal_params}")
     
     print(f"Verify m-height calculation: {calculate_m_height(G3, optimal_u, m)}")
+
+
+    print("Example 4: G(14, 20), m = 3, Random G")
+
+    G4 = np.random.uniform(-3, 3, (14, 20))
+    
+    m = 3
+
+    start = time.perf_counter()
+    
+    optimal_height, optimal_u, optimal_params = solve_m_height(G4, m)
+
+    end = time.perf_counter()
+    print(f"Time taken: {end - start} seconds")
+    
+    print(f"Optimal m-height: {optimal_height}")
+    print(f"Optimal vector u: {optimal_u}")
+    print(f"Optimal (a, b, X, psi): {optimal_params}")
+    
+    print(f"Verify m-height calculation: {calculate_m_height(G4, optimal_u, m)}")
+    

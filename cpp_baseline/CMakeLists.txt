@@ -24,11 +24,14 @@ include_directories(${GLPK_INCLUDE_DIR})
 FetchContent_Declare(
   eigen
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-  GIT_TAG 5527e78a64773a84c96c035d4c77b68c9db4f8ad # Use the desired commit hash here (Currently unstable cummunity version)
+  GIT_TAG 5527e78a64773a84c96c035d4c77b68c9db4f8ad # Use the desired commit hash here
 )
 
 # Make Eigen available
 FetchContent_MakeAvailable(eigen)
+
+# Find OpenMP
+find_package(OpenMP REQUIRED)
 
 # Add executables
 add_executable(main_exec main.cc calc_mheight.cc opt_mheight.cc)
@@ -42,11 +45,11 @@ target_include_directories(test_eigen_exec PRIVATE ${eigen_SOURCE_DIR})
 target_include_directories(test_exec PRIVATE ${eigen_SOURCE_DIR})
 target_include_directories(test_glpk_exec PRIVATE ${eigen_SOURCE_DIR})
 
-# Link GLPK library manually
-target_link_libraries(main_exec ${GLPK_LIB})
-target_link_libraries(test_eigen_exec ${GLPK_LIB})
-target_link_libraries(test_exec ${GLPK_LIB})
-target_link_libraries(test_glpk_exec ${GLPK_LIB})
+# Link GLPK and OpenMP libraries manually
+target_link_libraries(main_exec ${GLPK_LIB} OpenMP::OpenMP_CXX)
+target_link_libraries(test_eigen_exec ${GLPK_LIB} OpenMP::OpenMP_CXX)
+target_link_libraries(test_exec ${GLPK_LIB} OpenMP::OpenMP_CXX)
+target_link_libraries(test_glpk_exec ${GLPK_LIB} OpenMP::OpenMP_CXX)
 
 # Set output directories for each executable
 set_target_properties(main_exec PROPERTIES
