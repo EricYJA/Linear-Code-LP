@@ -1,0 +1,6 @@
+[submodule "cuda_baseline/HiGHS"]
+	path = cuda_baseline/HiGHS
+	url = https://github.com/ERGO-Code/HiGHS.git
+[submodule "cuda_baseline/cuPDLP-C"]
+	path = cuda_baseline/cuPDLP-C
+	url = git@github.com:COPT-Public/cuPDLP-C.git
