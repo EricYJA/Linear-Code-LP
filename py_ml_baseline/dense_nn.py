@@ -19,6 +19,9 @@ MAX_COLS = 5
 MATRICES_PER_SIZE = 10  # number of matrices for each size pair
 FIXED_M = 2            # always use m=2
 
+#  handle unbounded objective value
+MAX_VALUE = 1e6
+
 FLATTEN_LEN = MAX_ROWS * MAX_COLS  # 10*10 = 100
 INPUT_DIM = FLATTEN_LEN + 1        # Flattened matrix + 1 dimension for m
 HIDDEN_DIM = 64
@@ -98,6 +101,17 @@ def generate_dataset_for_all_sizes(
 
 # Generate dataset for all sizes
 X_data, y_data = generate_dataset_for_all_sizes()
+
+# fix the inf problem
+y_data[torch.isinf(y_data)] = MAX_VALUE
+
+print("Min of y_data:", torch.min(y_data).item())
+print("Max of y_data:", torch.max(y_data).item())
+print("Any NaN in y_data?", torch.isnan(y_data).any().item())
+print("Any Inf in y_data?", torch.isinf(y_data).any().item())
+
+print("Any NaN in X_data?", torch.isnan(X_data).any().item())
+print("Any Inf in X_data?", torch.isinf(X_data).any().item())
 
 # Create DataLoader
 dataset = torch.utils.data.TensorDataset(X_data, y_data)
