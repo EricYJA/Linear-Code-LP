@@ -5,22 +5,24 @@ import random
 import os
 
 # 1) Import your function from opt_mheight.py
-#    Adjust the path as needed; here we assume it's in ../py_baseline/opt_mheight.py
 import sys
 sys.path.append(os.path.abspath("../py_baseline"))  # Make sure Python sees that folder
 from opt_mheight import solve_m_height
 
-
 # ---------------------------
 # 2) Hyperparameters
 # ---------------------------
-MAX_SIZE = 15       # Maximum dimension for matrix G (G in R^(d x d), d <= 15)
-FLATTEN_LEN = MAX_SIZE * MAX_SIZE  # 15 x 15 = 225
-INPUT_DIM = FLATTEN_LEN + 1  # Flattened matrix plus integer m
+MIN_ROWS = 3
+MAX_ROWS = 5
+MIN_COLS = 3
+MAX_COLS = 5
+MATRICES_PER_SIZE = 10  # number of matrices for each size pair
+FIXED_M = 2            # always use m=2
+
+FLATTEN_LEN = MAX_ROWS * MAX_COLS  # 10*10 = 100
+INPUT_DIM = FLATTEN_LEN + 1        # Flattened matrix + 1 dimension for m
 HIDDEN_DIM = 64
 OUTPUT_DIM = 1       # Single float output h
-NUM_TRAIN_SAMPLES = 1000
-NUM_VALID_SAMPLES = 200
 EPOCHS = 10
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-3
@@ -28,87 +30,83 @@ LEARNING_RATE = 1e-3
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device:", DEVICE)
 
-
 # ---------------------------
 # 3) Utility: Pad and Flatten
 # ---------------------------
-def pad_and_flatten(matrix, m, max_size=MAX_SIZE):
+def pad_and_flatten(matrix, m, max_rows=MAX_ROWS, max_cols=MAX_COLS):
     """
-    Flatten a 2D matrix G, zero-pad it up to max_size^2 elements,
+    Flatten a 2D matrix G, zero-pad it up to (max_rows * max_cols) elements,
     then append integer m as one more float dimension.
-    Returns a 1D tensor of length (max_size^2 + 1).
+    Returns a 1D tensor of length (max_rows * max_cols + 1).
     """
     flattened = matrix.flatten()
     original_len = flattened.shape[0]
-    target_len = max_size * max_size  # e.g., 15 * 15 = 225
+    target_len = max_rows * max_cols  # e.g., 10*10 = 100
 
     # Create a zero vector of length target_len
     padded = torch.zeros(target_len, dtype=torch.float32)
     # Copy the flattened matrix into the padded tensor
     padded[:original_len] = flattened
 
-    # Now append the integer m (as a float). We'll return a 1D tensor of shape (226,)
+    # Append the integer m (as float) => final shape (101,)
     final_input = torch.cat([padded, torch.tensor([float(m)], dtype=torch.float32)])
     return final_input
-
 
 # ---------------------------
 # 4) Data Generation
 # ---------------------------
-def generate_dataset(num_samples, max_size=MAX_SIZE):
+def generate_dataset_for_all_sizes(
+    min_rows=MIN_ROWS, max_rows=MAX_ROWS,
+    min_cols=MIN_COLS, max_cols=MAX_COLS,
+    matrices_per_size=MATRICES_PER_SIZE
+):
     """
-    Generate a dataset of random (G, m) pairs with d <= max_size,
-    compute h via solve_m_height(G, m),
-    and return (X, y) where:
-       X -> padded & flattened tensor of shape (num_samples, max_size^2 + 1)
-       y -> ground-truth h-values of shape (num_samples, 1)
+    Generate a dataset containing all matrix sizes in the range:
+      rows in [min_rows..max_rows], cols in [min_cols..max_cols].
+    For each size, create `matrices_per_size` matrices with elements in {+1, -1}.
+    For each G, use m=2, then compute h = solve_m_height(G, 2).
+    Finally, pad & flatten G + m into a fixed size = (max_rows*max_cols + 1).
     """
     X_list, y_list = [], []
 
-    # Fix random seeds for reproducibility (optional)
-    # random.seed(42)
-    # torch.manual_seed(42)
+    for r in range(min_rows, max_rows + 1):
+        for c in range(min_cols, max_cols + 1):
 
-    for _ in range(num_samples):
-        # Random dimension d in [1..max_size]
-        d = random.randint(1, max_size)
+            for _ in range(matrices_per_size):
+                # Create an (r x c) matrix with each element in {+1, -1}
+                G_vals = [random.choice([1, -1]) for __ in range(r * c)]
+                G = torch.tensor(G_vals, dtype=torch.float32).view(r, c)
 
-        # Random matrix G of shape (d, d)
-        G = torch.randn(d, d)
+                # Our fixed m=2
+                m_val = FIXED_M
 
-        # A random nonzero integer m; adapt the choices as needed
-        m_choices = [-10, -5, -2, -1, 1, 2, 5, 10]
-        m_val = random.choice(m_choices)
+                # Compute ground truth h
+                # print(f"G: {G.shape}, m: {m_val}")
+                # print(G)
+                h_value, _u, _p = solve_m_height(G.cpu().numpy(), int(m_val))
 
-        # Obtain ground-truth h from your custom function
-        # Adjust the call signature if your function expects different arguments
-        h_value, _, _ = solve_m_height(G, m_val)
-
-        # Convert G, m into a single input vector
-        input_vec = pad_and_flatten(G, m_val, max_size=max_size)
-
-        X_list.append(input_vec)
-        y_list.append(h_value)
+                # Pad & flatten
+                input_vec = pad_and_flatten(G, m_val, max_rows=max_rows, max_cols=max_cols)
+                X_list.append(input_vec)
+                y_list.append(h_value)
 
     # Convert to torch tensors
-    X_tensor = torch.stack(X_list)  # shape: (num_samples, 226)
-    y_tensor = torch.tensor(y_list, dtype=torch.float32).view(-1, 1)  # shape: (num_samples, 1)
+    X_tensor = torch.stack(X_list)
+    y_tensor = torch.tensor(y_list, dtype=torch.float32).view(-1, 1)
+
     return X_tensor, y_tensor
 
+# Generate dataset for all sizes
+X_data, y_data = generate_dataset_for_all_sizes()
 
-# Generate training dataset
-X_train, y_train = generate_dataset(NUM_TRAIN_SAMPLES, MAX_SIZE)
-# Generate validation (or verification) dataset
-X_valid, y_valid = generate_dataset(NUM_VALID_SAMPLES, MAX_SIZE)
+# Create DataLoader
+dataset = torch.utils.data.TensorDataset(X_data, y_data)
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-
-# Create DataLoaders
-train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
-valid_dataset = torch.utils.data.TensorDataset(X_valid, y_valid)
-
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
+print(f"Dataset shape: X={X_data.shape}, y={y_data.shape}")
+# Should be (#size_pairs * 10, 101) for X, (#size_pairs*10,1) for y
+#   #size_pairs = 8*8 = 64 (since we go from 3..10 for rows and 3..10 for cols)
+#   so total #samples = 64 * 10 = 640
 
 # ---------------------------
 # 5) Define the Model (Dense MLP)
@@ -129,22 +127,19 @@ class DenseModel(nn.Module):
 
 model = DenseModel(INPUT_DIM, HIDDEN_DIM, OUTPUT_DIM).to(DEVICE)
 
-
 # ---------------------------
 # 6) Training Setup
 # ---------------------------
 criterion = nn.MSELoss()  # For regression
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-
 # ---------------------------
 # 7) Training Loop
 # ---------------------------
+model.train()
 for epoch in range(EPOCHS):
-    # ---- Train ----
-    model.train()
-    total_train_loss = 0.0
-    for batch_x, batch_y in train_loader:
+    total_loss = 0.0
+    for batch_x, batch_y in dataloader:
         batch_x = batch_x.to(DEVICE)
         batch_y = batch_y.to(DEVICE)
 
@@ -154,48 +149,37 @@ for epoch in range(EPOCHS):
         loss.backward()
         optimizer.step()
 
-        total_train_loss += loss.item() * batch_x.size(0)
+        total_loss += loss.item() * batch_x.size(0)
 
-    avg_train_loss = total_train_loss / len(train_loader.dataset)
-
-    # ---- Validation ----
-    model.eval()
-    total_valid_loss = 0.0
-    with torch.no_grad():
-        for batch_x, batch_y in valid_loader:
-            batch_x = batch_x.to(DEVICE)
-            batch_y = batch_y.to(DEVICE)
-
-            outputs = model(batch_x)
-            loss = criterion(outputs, batch_y)
-            total_valid_loss += loss.item() * batch_x.size(0)
-
-    avg_valid_loss = total_valid_loss / len(valid_loader.dataset)
-
-    print(f"Epoch [{epoch+1}/{EPOCHS}], "
-          f"Train Loss: {avg_train_loss:.4f}, Valid Loss: {avg_valid_loss:.4f}")
+    avg_loss = total_loss / len(dataset)
+    print(f"Epoch [{epoch+1}/{EPOCHS}] - Loss: {avg_loss:.4f}")
 
 
 # ---------------------------
-# 8) Verification / Test Example
+# 8) Test / Verification
 # ---------------------------
-# Suppose we want to verify with a brand new matrix:
 model.eval()
 with torch.no_grad():
-    # Example: d=12, random G, random m
-    G_test = torch.randn(12, 12)
-    m_test = 2  # an integer
-    # The "true" h from your custom function
-    h_true, _, _ = solve_m_height(G_test, m_test)
+    # Example: pick one shape randomly from [3..10, 3..10]
+    r_test = random.randint(3, 5)
+    c_test = random.randint(3, 5)
 
-    # Format the input for the model
-    test_input = pad_and_flatten(G_test, m_test, MAX_SIZE).unsqueeze(0).to(DEVICE)
+    # Create a random +/-1 matrix
+    G_test_vals = [random.choice([0.5, -0.5]) for _ in range(r_test*c_test)]
+    G_test = torch.tensor(G_test_vals, dtype=torch.float32).view(r_test, c_test)
 
-    # Inference
-    h_pred = model(test_input)
-    h_pred_val = h_pred.item()
+    # Our fixed m=2
+    m_test = FIXED_M
 
-print("Verification:")
-print(f"  G_test.shape: {G_test.shape},  m_test = {m_test}")
-print(f"  Ground-truth h (from solve_m_height): {h_true}")
-print(f"  Model prediction: {h_pred_val}")
+    # True h from your function
+    h_true, _, _ = solve_m_height(G_test.cpu().numpy(), int(m_test))
+
+    # Pad + flatten
+    test_input = pad_and_flatten(G_test, m_test, MAX_ROWS, MAX_COLS).unsqueeze(0).to(DEVICE)
+
+    h_pred = model(test_input).item()
+
+print(f"Test matrix shape: ({r_test} x {c_test})")
+print(f"m_test = {m_test}")
+print(f"Ground truth h (solve_m_height): {h_true}")
+print(f"Model prediction: {h_pred}")

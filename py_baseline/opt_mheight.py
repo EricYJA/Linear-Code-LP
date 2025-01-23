@@ -56,7 +56,16 @@ def solve_m_height(G, m):
                     b_eq = []  # Equality constraint RHS
                     
                     # Add constraints for j in X
+                    # skip_psi = False
                     for j in X:
+                        
+                        # idx = tau_inv[j]
+                        # print(f"Checking j = {j}, idx = {idx}, len = {len(psi)}")
+                        # if idx >= len(psi):
+                        #     skip_psi = True
+                        #     break
+
+
                         row_pos = np.zeros(k)
                         row_neg = np.zeros(k)
                         for i in range(k):
@@ -66,6 +75,12 @@ def solve_m_height(G, m):
                         b_ineq.append(0)
                         A.append(row_neg)
                         b_ineq.append(-1)
+
+                    # if skip_psi:
+                    #     print("Skipping psi")
+                    #     continue  # skip building the rest of constraints for this psi
+
+                    # print("Y")
                     
                     # Add constraints for j in Y
                     for j in Y:
@@ -83,10 +98,14 @@ def solve_m_height(G, m):
                         row_eq[i] = G[i, b]
                     A_eq.append(row_eq)
                     b_eq.append(1)
+
+                    # print("Solving LP")
                     
                     # Solve the LP
-                    res = linprog(-c, A_ub=A, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=(None, None), method='highs')
+                    res = linprog(-c, A_ub=A, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=(None, None), method='revised simplex')
                     
+                    # print("LP solved")
+
                     # Check if the LP solution is better
                     if res.success and -res.fun > best_height:
                         best_height = -res.fun
